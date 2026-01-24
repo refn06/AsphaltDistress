@@ -24,7 +24,7 @@ class_mapping = {
 # Fungsi untuk load model dengan auto-download dari Release
 @st.cache_resource
 def load_model():
-    model_path = "model/best.pt"
+    model_path = "model/best.1.pt"
     # Buat folder model jika belum ada
     if not os.path.exists("model"):
         os.makedirs("model")
