@@ -5,6 +5,7 @@ import tempfile
 import os
 import urllib.request
 import pandas as pd
+import datetime
 
 # 1. Konfigurasi halaman
 st.set_page_config(
@@ -51,10 +52,10 @@ st.sidebar.divider()
 st.sidebar.subheader("ℹ️ Kamus Jenis Kerusakan")
 with st.sidebar.expander("Lihat Penjelasan"):
     st.markdown("""
-    * **D00 (Longitudinal):** Retak memanjang searah jalur jalan. Biasanya akibat beban kendaraan atau sambungan aspal.
-    * **D10 (Transverse):** Retak melintang tegak lurus jalur jalan. Akibat penyusutan aspal karena perubahan suhu.
-    * **D20 (Alligator):** Retak berpola kulit buaya. Menandakan kerusakan struktural pada fondasi jalan.
-    * **D40 (Pothole):** Lubang/ambles. Tahap kerusakan lanjut yang berbahaya bagi kendaraan.
+    * **D00 (Longitudinal - Retak memanjang):** Retak memanjang searah jalur jalan. Biasanya akibat beban kendaraan atau sambungan aspal.
+    * **D10 (Transverse - Retak melintang):** Retak melintang tegak lurus jalur jalan. Akibat penyusutan aspal karena perubahan suhu.
+    * **D20 (Alligator - Retak buaya/berpola):** Retak berpola kulit buaya. Menandakan kerusakan struktural pada fondasi jalan.
+    * **D40 (Pothole - Lubang):** Lubang/ambles. Tahap kerusakan lanjut yang berbahaya bagi kendaraan.
     * **Repair:** Area tambalan. Menandakan lokasi yang sudah pernah diperbaiki sebelumnya.
     """)
 
@@ -94,19 +95,26 @@ if uploaded_file:
 
     st.divider()
 
-    # 7. Ringkasan Statistik dan Download Report
-    st.subheader("📊 Ringkasan Kerusakan Terdeteksi")
+    # 7. Detail Analisis dan Ringkasan Statistik
+    st.subheader("📋 Laporan Hasil Analisis")
+    
+    # Menampilkan Waktu Analisis
+    waktu_sekarang = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    st.info(f"Analisis diselesaikan pada: **{waktu_sekarang} WIB**")
     
     boxes = results[0].boxes
     names = model.names
 
     if boxes is not None and len(boxes) > 0:
         counts = {}
+        conf_scores = boxes.conf.tolist()
+        
         for cls in boxes.cls.tolist():
             label = names[int(cls)]
             counts[label] = counts.get(label, 0) + 1
 
-        # Tampilkan list di UI
+        # Kolom Ringkasan
+        st.write("### 📊 Ringkasan Objek")
         data_for_df = []
         for label, count in counts.items():
             label_display = class_mapping.get(label, label)
@@ -115,6 +123,15 @@ if uploaded_file:
         
         st.success(f"**Total keseluruhan objek terdeteksi: {len(boxes)}**")
         
+        # Grafik Confidence Score
+        st.write("### 📈 Confidence Level per Objek")
+        df_conf = pd.DataFrame({
+            "Objek ke-": range(1, len(conf_scores) + 1),
+            "Confidence Score": conf_scores
+        })
+        st.bar_chart(df_conf.set_index("Objek ke-"))
+        st.caption("Grafik menunjukkan tingkat kepastian model (0.0 - 1.0) untuk setiap deteksi.")
+        
         # Fitur Download CSV
         df_report = pd.DataFrame(data_for_df)
         csv = df_report.to_csv(index=False).encode('utf-8')
@@ -122,14 +139,20 @@ if uploaded_file:
         st.download_button(
             label="📥 Download Laporan Deteksi (CSV)",
             data=csv,
-            file_name='laporan_kerusakan_jalan.csv',
+            file_name=f'laporan_jalan_{datetime.datetime.now().strftime("%Y%m%d_%H%M")}.csv',
             mime='text/csv',
         )
     else:
-        st.warning("Tidak ada kerusakan yang terdeteksi dengan threshold ini. Coba turunkan 'Confidence Threshold' di sidebar.")
+        st.warning("Tidak ada kerusakan yang terdeteksi dengan threshold ini.")
+        st.info("""
+        💡 **Info Teknis:**
+        * Coba turunkan **Confidence Threshold** di sidebar jika kerusakan terlihat namun tidak terdeteksi.
+        * Pastikan permukaan aspal tidak tertutup objek lain (seperti kendaraan atau bayangan yang sangat pekat).
+        """)
 
     # Hapus file sementara
     os.remove(temp_path)
 
 # Footer
+st.divider()
 st.caption("Developed for Pavement Inspection Workshop | MK Praktikum Unggulan - Universitas Gunadarma")
