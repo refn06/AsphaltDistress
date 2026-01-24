@@ -4,15 +4,16 @@ from PIL import Image
 import tempfile
 import os
 import urllib.request
+import pandas as pd
 
-# Konfigurasi halaman
+# 1. Konfigurasi halaman
 st.set_page_config(
     page_title="Asphalt Pavement Distress Detection",
     page_icon="🛣️",
     layout="centered"
 )
 
-# Kamus terjemahan untuk Dosen Sipil/Arsitektur
+# 2. Kamus terjemahan dan penjelasan teknis
 class_mapping = {
     "D00": "Longitudinal Crack (Retak Memanjang)",
     "D10": "Transverse Crack (Retak Melintang)",
@@ -21,18 +22,15 @@ class_mapping = {
     "Repair": "Road Repair (Tambalan Jalan)"
 }
 
-# Fungsi untuk load model dengan auto-download dari Release
+# 3. Fungsi untuk load model dengan auto-download dari GitHub Release
 @st.cache_resource
 def load_model():
     model_path = "model/best.1.pt"
-    # Buat folder model jika belum ada
     if not os.path.exists("model"):
         os.makedirs("model")
     
-    # Jika file tidak ada, tarik dari GitHub Release
     if not os.path.exists(model_path):
         with st.spinner("Sedang mengunduh model YOLOv9c dari GitHub Release... Mohon tunggu sebentar."):
-            # Menggunakan link release yang kamu buat
             url = "https://github.com/refn06/AsphaltDistress/releases/download/v1.0/best.1.pt"
             urllib.request.urlretrieve(url, model_path)
             
@@ -44,17 +42,28 @@ try:
 except Exception as e:
     st.error(f"Gagal memuat model. Error: {e}")
 
-# Header
+# 4. Sidebar: Pengaturan dan Kamus Kerusakan
+st.sidebar.header("⚙️ Pengaturan Deteksi")
+conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.45)
+st.sidebar.info("Gunakan threshold ~0.45 untuk hasil yang paling seimbang berdasarkan grafik F1-Curve.")
+
+st.sidebar.divider()
+st.sidebar.subheader("ℹ️ Kamus Jenis Kerusakan")
+with st.sidebar.expander("Lihat Penjelasan"):
+    st.markdown("""
+    * **D00 (Longitudinal):** Retak memanjang searah jalur jalan. Biasanya akibat beban kendaraan atau sambungan aspal.
+    * **D10 (Transverse):** Retak melintang tegak lurus jalur jalan. Akibat penyusutan aspal karena perubahan suhu.
+    * **D20 (Alligator):** Retak berpola kulit buaya. Menandakan kerusakan struktural pada fondasi jalan.
+    * **D40 (Pothole):** Lubang/ambles. Tahap kerusakan lanjut yang berbahaya bagi kendaraan.
+    * **Repair:** Area tambalan. Menandakan lokasi yang sudah pernah diperbaiki sebelumnya.
+    """)
+
+# 5. Konten Utama (Header)
 st.title("🛣️ Asphalt Pavement Distress Detection")
 st.write("Sistem berbasis YOLOv9c untuk mendeteksi kerusakan jalan secara otomatis.")
 st.divider()
 
-# Sidebar untuk pengaturan
-st.sidebar.header("Pengaturan Deteksi")
-conf_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.45)
-st.sidebar.info("Gunakan threshold ~0.45 untuk hasil yang paling seimbang berdasarkan grafik F1-Curve.")
-
-# Upload File
+# 6. Upload File
 uploaded_file = st.file_uploader(
     "Upload foto kerusakan jalan (JPG, JPEG, PNG)",
     type=["jpg", "jpeg", "png"]
@@ -69,10 +78,12 @@ if uploaded_file:
         st.subheader("Original Image")
         st.image(image, use_container_width=True)
 
+    # Simpan sementara untuk diproses YOLO
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         image.save(tmp.name)
         temp_path = tmp.name
 
+    # Jalankan Prediksi
     with st.spinner('Menganalisis gambar dengan YOLOv9c...'):
         results = model.predict(temp_path, conf=conf_threshold)
 
@@ -83,6 +94,7 @@ if uploaded_file:
 
     st.divider()
 
+    # 7. Ringkasan Statistik dan Download Report
     st.subheader("📊 Ringkasan Kerusakan Terdeteksi")
     
     boxes = results[0].boxes
@@ -94,15 +106,30 @@ if uploaded_file:
             label = names[int(cls)]
             counts[label] = counts.get(label, 0) + 1
 
+        # Tampilkan list di UI
+        data_for_df = []
         for label, count in counts.items():
             label_display = class_mapping.get(label, label)
             st.write(f"- **{label_display}**: {count} titik")
+            data_for_df.append({"Kode": label, "Jenis Kerusakan": label_display, "Jumlah": count})
         
         st.success(f"**Total keseluruhan objek terdeteksi: {len(boxes)}**")
+        
+        # Fitur Download CSV
+        df_report = pd.DataFrame(data_for_df)
+        csv = df_report.to_csv(index=False).encode('utf-8')
+        
+        st.download_button(
+            label="📥 Download Laporan Deteksi (CSV)",
+            data=csv,
+            file_name='laporan_kerusakan_jalan.csv',
+            mime='text/csv',
+        )
     else:
         st.warning("Tidak ada kerusakan yang terdeteksi dengan threshold ini. Coba turunkan 'Confidence Threshold' di sidebar.")
 
+    # Hapus file sementara
     os.remove(temp_path)
 
 # Footer
-st.caption("Developed for Pavement Inspection Workshop | YOLOv9c State-of-the-Art Model")
+st.caption("Developed for Pavement Inspection Workshop | MK Praktikum Unggulan - Universitas Gunadarma")
